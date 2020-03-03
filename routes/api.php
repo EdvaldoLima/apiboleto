@@ -19,4 +19,5 @@ use Illuminate\Http\Request;
 
 Route::get('/token', ['uses' => 'TokenController@gerar']);
 
-Route::post('/boleto', ['uses' => 'BoletoController@registrar']);
+Route::get('/boleto/registrar', ['uses' => 'BoletoController@registrar']);
+Route::get('/boleto/gerar/{nosso_numero}', ['uses' => 'BoletoController@gerarBoleto']);
