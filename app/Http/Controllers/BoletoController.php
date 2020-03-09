@@ -13,113 +13,110 @@ use DB;
 class BoletoController extends TokenController
 {
     public function registrar(Request $req){
-        // return $req->all();
+        $allData = $req->all();
         //Homologação
         // https://cobranca.homologa.bb.com.br:7101/registrarBoleto
 
         $url = 'https://cobranca.homologa.bb.com.br:7101/registrarBoleto';
 
-        // Gerando o nosso número = ano + num fatura
-        // Pega o registro máximo registrado no banco
-        // $calc = "0000000004" + 1;
-        // $len = str_pad($calc, 10, "0", STR_PAD_LEFT);
-        // echo $len;
-        // $registro = DB::table('boletos')->max('nossoNumero');
-
-        // return $registro;
-
         $data = array(
+            'titulo_cliente' => $allData['titulo_cliente'], //Nosso número "00028057740000000020"
             'convenio' => 2805774,
             'carteira' => 17,
             'variacao_carteira' => 27,
             'modalidade' => 1,
             'dt_emissao' => Carbon::now()->format('d.m.Y'),
             'dt_vencimento' => Carbon::now()->addDays(10)->format('d.m.Y'),
-            'valor_boleto' => 30000,
+            'valor_boleto' => $allData['valor_boleto'],
             'tipo_desconto' => 1,
-            'nome_cliente' => "DATACOM",
-            'cpf_cnpj' => "70122808401",
+            'nome_cliente' => $allData['nome_cliente'],
+            'cpf_cnpj' => $allData['cpf_cnpj'],
             'endereco' => array(
-                'rua' => "Rua Edite Pereira",
-                'cidade' => "Natal",
-                'estado' => "RN",
-                'cep' => "59162-000"
+                'rua' => $allData['endereco']['rua'],
+                'cidade' => $allData['endereco']['cidade'],
+                'estado' => $allData['endereco']['estado'],
+                'cep' => $allData['endereco']['cep']
             ),
-            'demonstrativo' => array(
-                "Foi feito isso e aquilo",
-                "Outros serviços"
+            'demonstrativo' => $allData['demonstrativo']
+        );
+        
+        // Colocando os dados no XML para a requisição e salvando um arquivo XML com os dados
+        $layout = view('boleto.layout-requisicao', compact('data'));
+        Storage::disk('local')->put('requisicao.xml', $layout);
+        // Recuperando o token para a requisição
+        $token = json_decode(TokenController::gerar());
+
+        $ch = curl_init();
+		$options = array(
+            CURLOPT_URL => $url,
+			CURLOPT_BINARYTRANSFER => true,
+			CURLOPT_RETURNTRANSFER => true,
+			CURLOPT_SSL_VERIFYPEER => false,
+			CURLOPT_SSL_VERIFYHOST => 0,
+			CURLOPT_FOLLOWLOCATION => true,
+			CURLOPT_POST => true,
+            CURLOPT_MAXREDIRS => 3,
+            CURLOPT_POSTFIELDS => Storage::disk('local')->get('requisicao.xml'),
+            CURLOPT_HTTPHEADER => array(
+                'Content-Type: text/xml;charset=UTF-8',
+                "Authorization: Bearer $token->access_token",
+                'SOAPAction: registrarBoleto'
             )
         );
-
-        // Colocando os dados no XML para a requisição e salvando um arquivo XML com os dados
-        // $layout = view('boleto.layout-requisicao', compact('data'));
-        // Storage::disk('local')->put('requisicao.xml', $layout);
-        // // Recuperando o token para a requisição
-        // $token = json_decode(TokenController::gerar());
-
-        // $ch = curl_init();
-		// $options = array(
-        //     CURLOPT_URL => $url,
-		// 	CURLOPT_BINARYTRANSFER => true,
-		// 	CURLOPT_RETURNTRANSFER => true,
-		// 	CURLOPT_SSL_VERIFYPEER => false,
-		// 	CURLOPT_SSL_VERIFYHOST => 0,
-		// 	CURLOPT_FOLLOWLOCATION => true,
-		// 	CURLOPT_POST => true,
-        //     CURLOPT_MAXREDIRS => 3,
-        //     CURLOPT_POSTFIELDS => Storage::disk('local')->get('requisicao.xml'),
-        //     CURLOPT_HTTPHEADER => array(
-        //         'Content-Type: text/xml;charset=UTF-8',
-        //         "Authorization: Bearer $token->access_token",
-        //         'SOAPAction: registrarBoleto'
-        //     )
-        // );
         
-        // // $ch = curl_init();
-        // curl_setopt_array($ch, $options);
+        // $ch = curl_init();
+        curl_setopt_array($ch, $options);
 
-        // $exe = curl_exec($ch);
-        // curl_close($ch);
-        // Storage::disk('local')->put('resposta.xml', $exe);
+        $exe = curl_exec($ch);
+        curl_close($ch);
 
-        $file = Storage::disk('local')->get('resposta.xml');
 
-        $dataBoleto = $this->loadXmlBB($file); 
-        // Retornando a informação em formato JSON
-        $boleto = array(
-            "nosso_numero" => $dataBoleto["ns0_textoNumeroTituloCobrancaBb"],
-            "linha_digitavel" => $dataBoleto["ns0_linhaDigitavel"],
-            "codigo_barras_numerico" => $dataBoleto["ns0_codigoBarraNumerico"],
-            "erros" => $dataBoleto["ns0_textoMensagemErro"]
-        );
+            $fileName = Carbon::now()->format('YmdHis');
 
-        $infoBoleto = array_merge($data, $boleto);
+            Storage::disk('local')->put($fileName.'resposta.xml', $exe);
 
-        DB::table('boletos')->insert([
-            [
-                'convenio' => $infoBoleto["convenio"],
-                'carteira' => $infoBoleto["carteira"],
-                'variacaoCarteira' => $infoBoleto["variacao_carteira"],
-                'dtEmissao' => Carbon::parse($infoBoleto["dt_emissao"])->format('Y-m-d'),
-                'dtVencimento' => Carbon::parse($infoBoleto["dt_vencimento"])->format('Y-m-d'),
-                'valorBoleto' => $infoBoleto["valor_boleto"],
-                'tipoDesconto' => $infoBoleto["tipo_desconto"],
-                'nomeCliente' => $infoBoleto["nome_cliente"],
-                'cpfCnpj' => $infoBoleto["cpf_cnpj"],
-                'rua' => $infoBoleto["endereco"]["rua"],
-                'cidade' => $infoBoleto["endereco"]["cidade"],
-                'estado' => $infoBoleto["endereco"]["estado"],
-                'cep' => $infoBoleto["endereco"]["cep"],
-                'demonstrativo' => join(" - ", $infoBoleto["demonstrativo"]),
-                'nossoNumero' => $infoBoleto["nosso_numero"],
-                'arquivo' => 'resposta.xml',
-                'linhaDigitavel' => $infoBoleto["linha_digitavel"],
-                'codigoBarrasNumerico' => $infoBoleto["codigo_barras_numerico"],
-                'created_at' => Carbon::now()->format('Y-m-d H:i:s')
-            ]
-        ]);
+            $file = Storage::disk('local')->get($fileName.'resposta.xml');
 
-        return json_encode($infoBoleto);
+            $dataBoleto = $this->loadXmlBB($file); 
+            // Retornando a informação em formato JSON
+            $boleto = array(
+                "nosso_numero" => $dataBoleto["ns0_textoNumeroTituloCobrancaBb"],
+                "linha_digitavel" => $dataBoleto["ns0_linhaDigitavel"],
+                "codigo_barras_numerico" => $dataBoleto["ns0_codigoBarraNumerico"],
+                "erros" => $dataBoleto["ns0_textoMensagemErro"]
+            );
+
+            $infoBoleto = array_merge($data, $boleto);
+
+        if(gettype($infoBoleto['erros']) == "array"){
+            DB::table('boletos')->insert([
+                [
+                    'convenio' => $infoBoleto["convenio"],
+                    'carteira' => $infoBoleto["carteira"],
+                    'variacaoCarteira' => $infoBoleto["variacao_carteira"],
+                    'dtEmissao' => Carbon::parse($infoBoleto["dt_emissao"])->format('Y-m-d'),
+                    'dtVencimento' => Carbon::parse($infoBoleto["dt_vencimento"])->format('Y-m-d'),
+                    'valorBoleto' => $infoBoleto["valor_boleto"],
+                    'tipoDesconto' => $infoBoleto["tipo_desconto"],
+                    'nomeCliente' => $infoBoleto["nome_cliente"],
+                    'cpfCnpj' => $infoBoleto["cpf_cnpj"],
+                    'rua' => $infoBoleto["endereco"]["rua"],
+                    'cidade' => $infoBoleto["endereco"]["cidade"],
+                    'estado' => $infoBoleto["endereco"]["estado"],
+                    'cep' => $infoBoleto["endereco"]["cep"],
+                    'demonstrativo' => join(" - ", $infoBoleto["demonstrativo"]),
+                    'nossoNumero' => $infoBoleto["nosso_numero"],
+                    'arquivo' => $fileName.'resposta.xml',
+                    'linhaDigitavel' => $infoBoleto["linha_digitavel"],
+                    'codigoBarrasNumerico' => $infoBoleto["codigo_barras_numerico"],
+                    'created_at' => Carbon::now()->format('Y-m-d H:i:s')
+                ]
+            ]);
+
+            return json_encode($infoBoleto);
+        }else{
+            return response()->json(array("erro" => $infoBoleto['erros']));
+        }
     }
 
     public function loadXmlBB($file){
@@ -172,7 +169,8 @@ class BoletoController extends TokenController
             "rua",
             "estado",
             "cidade",
-            "demonstrativo"
+            "demonstrativo",
+            "arquivo"
         )
         ->where('nossoNumero', $nosso_numero)
         ->get()
@@ -183,7 +181,7 @@ class BoletoController extends TokenController
         // return $res;
         
         // O arquivo será salvo com nosso número como parte do nome para recuperar
-        $file = Storage::disk('local')->get('resposta.xml');
+        $file = Storage::disk('local')->get($res['arquivo']);
 
         $dataBoleto = $this->loadXmlBB($file);
         // Retornando a informação em formato JSON
